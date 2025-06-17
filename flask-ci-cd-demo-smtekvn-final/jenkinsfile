@@ -1,0 +1,42 @@
+pipeline {
+    agent any
+    environment {
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-creds')
+        IMAGE_NAME = 'smtekvn/flask-ci-cd-demo'
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                git branch: 'main', url: 'https://github.com/smtekvn/flask-ci-cd-demo.git'
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build("${IMAGE_NAME}:${BUILD_NUMBER}")
+                }
+            }
+        }
+        stage('Push to DockerHub') {
+            steps {
+                script {
+                    docker.withRegistry('', DOCKERHUB_CREDENTIALS) {
+                        docker.image("${IMAGE_NAME}:${BUILD_NUMBER}").push()
+                    }
+                }
+            }
+        }
+        stage('Update K8s Manifest') {
+            steps {
+                sh """
+                sed -i 's|image: .*|image: ${IMAGE_NAME}:${BUILD_NUMBER}|' manifests/deployment.yaml
+                git config user.email "ci@example.com"
+                git config user.name "ci-bot"
+                git add manifests/deployment.yaml
+                git commit -m "Update image to ${IMAGE_NAME}:${BUILD_NUMBER}" || echo "No changes"
+                git push origin main
+                """
+            }
+        }
+    }
+}
